@@ -1,7 +1,9 @@
+import hashlib
 import nltk
 import requests
 from bs4 import BeautifulSoup
 from rdflib import Graph, Namespace, Literal, URIRef
+from sklearn.feature_extraction.text import CountVectorizer
 
 # Download the NLTK punkt tokenizer if not already there
 nltk.download('punkt')
@@ -25,6 +27,30 @@ class Llm_Context_Stretch:
         self.rdf_database = Graph()
 
 
+    def generate_key(self, chunk) -> str:
+        """
+        Generate a key for the chunk based on its hash and keywords.
+        
+        Args:
+            chunk: A chunk of text.
+            
+        Returns:
+            A key for the chunk.
+        """
+        
+        # Generate the hash
+        hash_object = hashlib.md5(chunk.encode())
+        hex_dig = hash_object.hexdigest()
+
+        # Extract keywords
+        vec = CountVectorizer().fit([chunk])
+        keywords = vec.get_feature_names_out()[:3]  # take the first three as an example
+
+        # Combine the hash and keywords to form the key
+        key = f"{hex_dig}-{'-'.join(keywords)}"
+
+        return key
+
     def add_to_rdf(self, chunks = []) -> bool:
         """
         Add the chunks to the RDF graph.
@@ -36,10 +62,11 @@ class Llm_Context_Stretch:
             True if successful, False otherwise.
         """
 
-        for i, chunk in enumerate(chunks):
+        for _, chunk in enumerate(chunks):
 
             # Create a URIRef for the chunk based on its index
-            chunk_uri = URIRef(f"{self.RDF_NAMESPACE}/chunks/{i}")
+            key = self.generate_key(chunk)
+            chunk_uri = URIRef(f"{self.RDF_NAMESPACE}/chunks/{key}")
 
             # Add the chunk to the graph
             self.rdf_database.add((chunk_uri, self.rdf_namespace.text, Literal(chunk)))
@@ -106,7 +133,7 @@ class Llm_Context_Stretch:
         chunks = self.chunk_text(text, self.TOKEN_LIMIT)
         self.add_to_rdf(chunks)
 
-        print(self.rdf_database.serialize(format='turtle').decode())
+        print(self.rdf_database.serialize(format='turtle'))
 
         return True
 
