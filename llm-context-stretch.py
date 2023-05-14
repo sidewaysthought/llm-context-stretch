@@ -22,6 +22,10 @@ class Llm_Context_Stretch:
         self.RDF_NAMESPACE = "db://llm-context-stretch#"
         self.TOKEN_LIMIT = 1000
 
+        # Setup
+        if not nltk.data.find('tokenizers/punkt'):
+            nltk.download('punkt')
+
         # Create the RDF graph
         self.rdf_namespace = Namespace(self.RDF_NAMESPACE)
         self.rdf_database = Graph()
