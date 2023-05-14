@@ -1,6 +1,8 @@
 import hashlib
 import nltk
 import requests
+import spacy
+from annoy import AnnoyIndex
 from bs4 import BeautifulSoup
 from rdflib import Graph, Namespace, Literal, URIRef
 from sklearn.feature_extraction.text import CountVectorizer
@@ -29,6 +31,15 @@ class Llm_Context_Stretch:
         # Create the RDF graph
         self.rdf_namespace = Namespace(self.RDF_NAMESPACE)
         self.rdf_database = Graph()
+        self.next_vector_index = 0
+        self.index_to_key = {}
+        self.key_to_index = {} 
+
+        # ... and the vector index
+        self.vector_index = AnnoyIndex(300, 'angular')
+
+        # Other useful stuff
+        self.nlp = spacy.load('en_core_web_md')
 
 
     def generate_key(self, chunk) -> str:
@@ -54,6 +65,21 @@ class Llm_Context_Stretch:
         key = f"{hex_dig}-{'-'.join(keywords)}"
 
         return key
+    
+
+    def make_embedding(self, chunk) -> list:
+        """
+        Embed the chunk using the spacy model.
+        
+        Args:
+            chunk: A chunk of text.
+            
+        Returns:
+            A list of word embeddings.
+        """
+
+        return self.nlp(chunk).vector
+    
 
     def add_to_rdf(self, chunks = []) -> bool:
         """
@@ -66,14 +92,29 @@ class Llm_Context_Stretch:
             True if successful, False otherwise.
         """
 
-        for _, chunk in enumerate(chunks):
+        for i, chunk in enumerate(chunks):
 
             # Create a URIRef for the chunk based on its index
+            print('Making key: ', i)
             key = self.generate_key(chunk)
             chunk_uri = URIRef(f"{self.RDF_NAMESPACE}/chunks/{key}")
 
+            # Cross-references
+            self.index_to_key[self.next_vector_index] = key
+            self.key_to_index[key] = self.next_vector_index
+
             # Add the chunk to the graph
+            print('Adding chunk: ', i)
             self.rdf_database.add((chunk_uri, self.rdf_namespace.text, Literal(chunk)))
+
+            # Embed the chunk and add it to the index
+            print('Adding embedding: ', i)
+            embedding = self.make_embedding(chunk)
+            self.vector_index.add_item(self.next_vector_index, embedding)
+            self.next_vector_index += 1
+
+        # Build the index
+        self.vector_index.build(10)
 
         return True
 
